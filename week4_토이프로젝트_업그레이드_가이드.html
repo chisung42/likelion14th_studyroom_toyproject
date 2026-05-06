@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Week 4 — 인증/인가 업그레이드 가이드</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222637;
+      --border: #2e3248;
+      --orange: #ff7f00;
+      --orange-dim: rgba(255,127,0,0.12);
+      --blue: #4f9eff;
+      --blue-dim: rgba(79,158,255,0.1);
+      --green: #3ecf8e;
+      --green-dim: rgba(62,207,142,0.1);
+      --red: #f87171;
+      --red-dim: rgba(248,113,113,0.1);
+      --yellow: #fbbf24;
+      --purple: #a78bfa;
+      --text: #e2e8f0;
+      --text-dim: #8892a4;
+      --mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    /* ── 레이아웃 ── */
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    /* ── 헤더 ── */
+    .hero {
+      text-align: center;
+      padding: 48px 0 40px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 48px;
+    }
+    .badge {
+      display: inline-block;
+      background: var(--orange-dim);
+      border: 1px solid var(--orange);
+      color: var(--orange);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      padding: 4px 14px;
+      border-radius: 999px;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    .hero p {
+      color: var(--text-dim);
+      font-size: 16px;
+    }
+
+    /* ── 섹션 ── */
+    section { margin-bottom: 56px; }
+    section > h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    section > h2 .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--orange);
+      color: #000;
+      font-size: 13px;
+      font-weight: 800;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── 아키텍처 흐름 다이어그램 ── */
+    .arch-flow {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .arch-layer {
+      flex: 1;
+      padding: 20px 16px;
+      position: relative;
+    }
+    .arch-layer + .arch-layer::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 16px; bottom: 16px;
+      width: 1px;
+      background: var(--border);
+    }
+    .arch-layer .layer-name {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .arch-layer .layer-file {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+    .arch-layer ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .arch-layer ul li {
+      font-size: 12px;
+      padding: 5px 9px;
+      border-radius: 6px;
+      border-left: 3px solid transparent;
+    }
+    .layer-router  .layer-name { color: var(--blue); }
+    .layer-router  ul li { background: var(--blue-dim); border-color: var(--blue); }
+    .layer-service .layer-name { color: var(--green); }
+    .layer-service ul li { background: var(--green-dim); border-color: var(--green); }
+    .layer-model   .layer-name { color: var(--purple); }
+    .layer-model   ul li { background: rgba(167,139,250,0.1); border-color: var(--purple); }
+
+    /* ── 변경 카드 ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .card-head {
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-head .icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .card-head .meta { flex: 1; min-width: 0; }
+    .card-head .meta .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .card-head .meta .path {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-body { padding: 16px 18px; }
+    .card-body p {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    /* ── 코드 블록 ── */
+    pre {
+      background: #0a0c14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+    code { font-family: var(--mono); }
+    .kw  { color: #c792ea; }
+    .fn  { color: #82aaff; }
+    .str { color: #c3e88d; }
+    .cm  { color: #546e7a; font-style: italic; }
+    .num { color: #f78c6c; }
+    .dec { color: var(--orange); }
+    .tp  { color: var(--yellow); }
+    .op  { color: var(--text-dim); }
+
+    /* ── 체크리스트 ── */
+    .checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .checklist li .step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .checklist li .step-body .step-title {
+      font-weight: 600;
+      font-size: 14px;
+      color: #fff;
+      margin-bottom: 3px;
+    }
+    .checklist li .step-body .step-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .checklist li .step-body .step-desc code {
+      color: var(--orange);
+      background: var(--orange-dim);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    /* ── 비교 테이블 ── */
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .compare-box {
+      background: var(--surface);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .compare-box .compare-head {
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .compare-before .compare-head { background: var(--red-dim); color: var(--red); border-bottom: 1px solid rgba(248,113,113,0.2); }
+    .compare-after  .compare-head { background: var(--green-dim); color: var(--green); border-bottom: 1px solid rgba(62,207,142,0.2); }
+    .compare-box pre { border: none; border-radius: 0; background: transparent; }
+
+    /* ── 인포 박스 ── */
+    .info {
+      background: var(--blue-dim);
+      border: 1px solid rgba(79,158,255,0.25);
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 13px;
+      color: var(--blue);
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin-top: 16px;
+    }
+    .info .info-icon { flex-shrink: 0; font-size: 16px; margin-top: 1px; }
+
+    /* ── 태그 ── */
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .tag-new { background: rgba(62,207,142,0.15); color: var(--green); }
+    .tag-mod { background: rgba(251,191,36,0.15); color: var(--yellow); }
+
+    @media (max-width: 640px) {
+      .arch-flow { flex-direction: column; }
+      .arch-layer + .arch-layer::before { display: none; }
+      .compare { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 헤더 -->
+  <div class="hero">
+    <div class="badge">Week 4 — 스터디플랫폼 업그레이드</div>
+    <h1>인증/인가 구현 가이드</h1>
+    <p>어느 계층에서, 무엇을, 어떻게 바꾸는가</p>
+  </div>
+
+
+  <!-- 1. 계층 구조 한눈에 보기 -->
+  <section>
+    <h2><span class="num">1</span> 프로젝트 계층 구조</h2>
+
+    <div class="arch-flow">
+      <div class="arch-layer layer-router">
+        <div class="layer-name">Router</div>
+        <div class="layer-file">routers/*.py</div>
+        <ul>
+          <li>요청 받기</li>
+          <li>응답 보내기</li>
+          <li>인증 의존성 주입</li>
+        </ul>
+      </div>
+      <div class="arch-layer layer-service">
+        <div class="layer-name">Service</div>
+        <div class="layer-file">services/*.py</div>
+        <ul>
+          <li>bcrypt 해싱</li>
+          <li>JWT 발급</li>
+          <li>비즈니스 규칙</li>
+        </ul>
+      </div>
+      <div class="arch-layer layer-model">
+        <div class="layer-name">Model / Schema</div>
+        <div class="layer-file">models/ &amp; schemas/</div>
+        <ul>
+          <li>role 컬럼 추가</li>
+          <li>LoginResponse 변경</li>
+          <li>TokenData 스키마</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="info">
+      <span class="info-icon">💡</span>
+      <span>
+        새로 생기는 파일 <code style="color:var(--blue);background:rgba(79,158,255,0.15);padding:1px 5px;border-radius:4px;font-size:11px;">app/dependencies.py</code>는
+        어느 계층에도 속하지 않는 <strong>공용 의존성</strong>입니다.
+        토큰을 검증해서 <em>"이 요청을 보낸 사람이 누구인지"</em>를 알아내 Router에 넘겨줍니다.
+      </span>
+    </div>
+  </section>
+
+
+  <!-- 2. 파일별 변경 상세 -->
+  <section>
+    <h2><span class="num">2</span> 파일별 변경 내용</h2>
+
+    <div class="cards">
+
+      <!-- requirements.txt -->
+      <div class="card">
+        <div class="card-head">
+          <div class="icon" style="background:rgba(251,191,36,0.15);font-size:18px;">📦</div>
+          <div class="meta">
+            <div class="title">requirements.txt <span class="tag tag-mod">수정</span></div>
+            <div class="path">주석 해제만 하면 됨</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <p>JWT와 bcrypt 패키지가 이미 주석으로 준비돼 있습니다.</p>
+          <pre><span class="cm"># 주석 해제</span>
+python-jose[cryptography]
+passlib[bcrypt]</pre>
+        </div>
+      </div>
+
+      <!-- models/user.py -->
+      <div class="card">
+        <div class="card-head">
+          <div class="icon" style="background:rgba(167,139,250,0.15);font-size:18px;">🗄️</div>
+          <div class="meta">
+            <div class="title">models/user.py <span class="tag tag-mod">수정</span></div>
+            <div class="path">app/models/user.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <p>users 테이블에 <code>role</code> 컬럼을 추가합니다.</p>
+          <pre><span class="cm"># 추가</span>
+role <span class="op">=</span> <span class="fn">Column</span>(
+  <span class="tp">String</span>(<span class="num">20</span>),
+  <span class="fn">default</span><span class="op">=</span><span class="str">"user"</span>,
+  <span class="fn">nullable</span><span class="op">=</span><span class="kw">False</span>
+)</pre>
+          <div class="info" style="margin-top:10px;font-size:12px;">
+            <span class="info-icon">🗒️</span>
+            <span>Supabase에서도 직접 ALTER TABLE 실행 필요:<br>
+            <code style="color:var(--blue);">ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user';</code></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- schemas/auth.py -->
+      <div class="card">
+        <div class="card-head">
+          <div class="icon" style="background:rgba(79,158,255,0.15);font-size:18px;">📋</div>
+          <div class="meta">
+            <div class="title">schemas/auth.py <span class="tag tag-mod">수정</span></div>
+            <div class="path">app/schemas/auth.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <p>로그인 응답을 <code>user_id</code>에서 <code>access_token</code>으로 변경합니다.</p>
+          <pre><span class="kw">class</span> <span class="tp">LoginResponse</span>(<span class="tp">BaseModel</span>):
+  access_token<span class="op">:</span> <span class="tp">str</span>
+  token_type<span class="op">:</span> <span class="tp">str</span> <span class="op">=</span> <span class="str">"bearer"</span>
+
+<span class="cm"># 새로 추가</span>
+<span class="kw">class</span> <span class="tp">TokenData</span>(<span class="tp">BaseModel</span>):
+  user_id<span class="op">:</span> <span class="tp">int</span>
+  role<span class="op">:</span> <span class="tp">str</span></pre>
+        </div>
+      </div>
+
+      <!-- services/auth_service.py -->
+      <div class="card">
+        <div class="card-head">
+          <div class="icon" style="background:rgba(62,207,142,0.15);font-size:18px;">⚙️</div>
+          <div class="meta">
+            <div class="title">services/auth_service.py <span class="tag tag-mod">수정</span></div>
+            <div class="path">app/services/auth_service.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <p>비밀번호 해싱과 JWT 발급 로직을 추가합니다.</p>
+          <pre><span class="kw">from</span> passlib.context <span class="kw">import</span> CryptContext
+<span class="kw">from</span> jose <span class="kw">import</span> jwt
+
+pwd_ctx <span class="op">=</span> <span class="fn">CryptContext</span>(
+  schemes<span class="op">=</span>[<span class="str">"bcrypt"</span>]
+)
+
+<span class="cm"># 회원가입: 평문 → 해시</span>
+<span class="fn">pwd_ctx</span>.hash(request.password)
+
+<span class="cm"># 로그인: 평문 비교 → verify</span>
+<span class="fn">pwd_ctx</span>.verify(plain, hashed)
+
+<span class="cm"># 로그인 성공 시 JWT 발급</span>
+payload <span class="op">=</span> {
+  <span class="str">"sub"</span><span class="op">:</span> user.id,
+  <span class="str">"role"</span><span class="op">:</span> user.role,
+  <span class="str">"exp"</span><span class="op">:</span> <span class="cm">... (만료 시각)</span>
+}
+<span class="fn">jwt</span>.encode(payload, SECRET_KEY)</pre>
+        </div>
+      </div>
+
+      <!-- dependencies.py (NEW) -->
+      <div class="card">
+        <div class="card-head">
+          <div class="icon" style="background:rgba(255,127,0,0.15);font-size:18px;">🔑</div>
+          <div class="meta">
+            <div class="title">dependencies.py <span class="tag tag-new">신규</span></div>
+            <div class="path">app/dependencies.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <p>토큰을 검증하고 현재 유저를 꺼내는 공용 의존성입니다. 모든 보호된 라우터가 이걸 가져다 씁니다.</p>
+          <pre><span class="kw">from</span> fastapi.security <span class="kw">import</span> OAuth2PasswordBearer
+<span class="kw">from</span> jose <span class="kw">import</span> jwt, JWTError
+
+oauth2_scheme <span class="op">=</span> <span class="fn">OAuth2PasswordBearer</span>(
+  tokenUrl<span class="op">=</span><span class="str">"/api/v1/auth/login"</span>
+)
+
+<span class="kw">def</span> <span class="fn">get_current_user</span>(
+  token<span class="op">:</span> <span class="tp">str</span> <span class="op">=</span> <span class="fn">Depends</span>(oauth2_scheme),
+  db<span class="op">:</span> <span class="tp">Session</span> <span class="op">=</span> <span class="fn">Depends</span>(get_db)
+) <span class="op">-&gt;</span> <span class="tp">User</span>:
+  payload <span class="op">=</span> <span class="fn">jwt</span>.decode(token, SECRET_KEY)
+  user_id <span class="op">=</span> payload[<span class="str">"sub"</span>]
+  <span class="kw">return</span> user_repo.<span class="fn">get_user</span>(db, user_id)</pre>
+        </div>
+      </div>
+
+      <!-- routers/posts.py -->
+      <div class="card">
+        <div class="card-head">
+          <div class="icon" style="background:rgba(79,158,255,0.15);font-size:18px;">🛣️</div>
+          <div class="meta">
+            <div class="title">routers/*.py <span class="tag tag-mod">수정</span></div>
+            <div class="path">posts / comments / reservations / rooms</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <p>쿼리 파라미터 <code>user_id</code>를 제거하고 의존성으로 교체합니다.</p>
+          <pre><span class="cm"># Before</span>
+<span class="kw">def</span> <span class="fn">create_post</span>(
+  user_id<span class="op">:</span> <span class="tp">int</span>,  <span class="cm"># ?user_id=1</span>
+  ...
+):
+
+<span class="cm"># After</span>
+<span class="kw">def</span> <span class="fn">create_post</span>(
+  current_user<span class="op">:</span> <span class="tp">User</span> <span class="op">=</span>
+    <span class="fn">Depends</span>(get_current_user),
+  ...
+):</pre>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- 3. Before / After 비교 -->
+  <section>
+    <h2><span class="num">3</span> 요청 흐름 비교</h2>
+
+    <div class="compare">
+      <div class="compare-box compare-before">
+        <div class="compare-head">Phase 1 — 인증 없음</div>
+        <pre>POST /posts?user_id=1
+Content-Type: application/json
+
+{
+  "title": "제목",
+  "content": "내용"
+}
+
+<span class="cm">→ user_id=1 을 믿고 저장</span>
+<span class="cm">→ 누구나 ?user_id=2 로 타인 행세 가능</span></pre>
+      </div>
+      <div class="compare-box compare-after">
+        <div class="compare-head">Phase 2+4 — JWT 인증</div>
+        <pre>POST /posts
+Authorization: Bearer eyJhbGci...
+Content-Type: application/json
+
+{
+  "title": "제목",
+  "content": "내용"
+}
+
+<span class="cm">→ 토큰 검증 → user_id 자동 추출</span>
+<span class="cm">→ 위조 불가 (서버 서명 확인)</span></pre>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- 4. 구현 순서 체크리스트 -->
+  <section>
+    <h2><span class="num">4</span> 구현 순서</h2>
+
+    <ol class="checklist">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">패키지 설치</div>
+          <div class="step-desc"><code>requirements.txt</code> 주석 해제 → <code>pip install -r requirements.txt</code></div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">DB 마이그레이션</div>
+          <div class="step-desc">Supabase 대시보드에서 <code>ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user';</code></div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">models/user.py — role 컬럼 추가</div>
+          <div class="step-desc">SQLAlchemy 모델에 <code>role</code> 컬럼 반영</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">schemas/auth.py — LoginResponse 변경</div>
+          <div class="step-desc"><code>user_id</code> → <code>access_token</code> + <code>token_type</code></div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">services/auth_service.py — bcrypt + JWT 로직 추가</div>
+          <div class="step-desc">회원가입: 해싱 저장 / 로그인: verify 후 토큰 발급</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <div class="step-title">app/dependencies.py — get_current_user() 신규 생성</div>
+          <div class="step-desc">토큰 검증 + DB에서 유저 조회 → Router에 User 객체 반환</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <div class="step-title">routers/ — user_id 파라미터 → Depends(get_current_user)</div>
+          <div class="step-desc"><code>posts.py</code> / <code>comments.py</code> / <code>reservations.py</code> / <code>rooms.py</code></div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">8</div>
+        <div class="step-body">
+          <div class="step-title">Swagger(/docs)에서 테스트</div>
+          <div class="step-desc">로그인 → 토큰 복사 → [Authorize] → 보호된 API 호출 확인</div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+
+  <!-- 5. admin 생성 방법 -->
+  <section>
+    <h2><span class="num">5</span> admin 계정 만들기</h2>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-head">
+          <div class="icon" style="background:rgba(251,191,36,0.15);font-size:18px;">🛠️</div>
+          <div class="meta">
+            <div class="title">Supabase에서 직접 수정</div>
+            <div class="path">Table Editor → users 테이블</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <p>회원가입 후 Supabase 대시보드 SQL Editor에서:</p>
+          <pre><span class="kw">UPDATE</span> users
+<span class="kw">SET</span> role <span class="op">=</span> <span class="str">'admin'</span>
+<span class="kw">WHERE</span> email <span class="op">=</span> <span class="str">'admin@test.com'</span>;</pre>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="icon" style="background:rgba(62,207,142,0.15);font-size:18px;">🔒</div>
+          <div class="meta">
+            <div class="title">admin 전용 엔드포인트 보호</div>
+            <div class="path">routers/rooms.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <p>스터디룸 생성/수정/삭제는 admin만 가능하도록:</p>
+          <pre><span class="kw">def</span> <span class="fn">create_room</span>(
+  current_user <span class="op">=</span> <span class="fn">Depends</span>(get_current_user),
+  ...
+):
+  <span class="kw">if</span> current_user.role <span class="op">!=</span> <span class="str">"admin"</span>:
+    <span class="kw">raise</span> <span class="fn">HTTPException</span>(
+      status_code<span class="op">=</span><span class="num">403</span>,
+      detail<span class="op">=</span><span class="str">"관리자만 가능합니다"</span>
+    )</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
